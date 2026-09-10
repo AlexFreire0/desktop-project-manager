@@ -45,7 +45,7 @@ export type AppData = {
   settings: Settings;
 };
 
-const defaults: AppData = {
+export const defaults: AppData = {
   projects: [],
   quickCommands: [],
   settings: {
@@ -57,6 +57,83 @@ const defaults: AppData = {
   },
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown, fallback = '') {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function booleanValue(value: unknown, fallback: boolean) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function normalizeProjectPart(value: unknown): ProjectPart | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    id: stringValue(value.id),
+    name: stringValue(value.name),
+    path: stringValue(value.path),
+    notes: stringValue(value.notes),
+  };
+}
+
+function normalizeProject(value: unknown): Project | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    id: stringValue(value.id),
+    name: stringValue(value.name),
+    path: stringValue(value.path),
+    description: stringValue(value.description),
+    color: stringValue(value.color),
+    favorite: booleanValue(value.favorite, false),
+    createdAt: stringValue(value.createdAt),
+    updatedAt: stringValue(value.updatedAt),
+    parts: Array.isArray(value.parts)
+      ? value.parts.map(normalizeProjectPart).filter((part): part is ProjectPart => part !== undefined)
+      : [],
+  };
+}
+
+function normalizeQuickCommand(value: unknown): QuickCommand | undefined {
+  if (!isRecord(value)) return undefined;
+  const command: QuickCommand = {
+    id: stringValue(value.id),
+    name: stringValue(value.name),
+    command: stringValue(value.command),
+    args: stringArray(value.args),
+  };
+  if (typeof value.projectId === 'string') command.projectId = value.projectId;
+  if (typeof value.cwd === 'string') command.cwd = value.cwd;
+  if (typeof value.color === 'string') command.color = value.color;
+  return command;
+}
+
+export function normalizeAppData(value: unknown): AppData {
+  const input = isRecord(value) ? value : {};
+  const settings = isRecord(input.settings) ? input.settings : {};
+  return {
+    projects: Array.isArray(input.projects)
+      ? input.projects.map(normalizeProject).filter((project): project is Project => project !== undefined)
+      : [],
+    quickCommands: Array.isArray(input.quickCommands)
+      ? input.quickCommands.map(normalizeQuickCommand).filter((command): command is QuickCommand => command !== undefined)
+      : [],
+    settings: {
+      defaultEditor: stringValue(settings.defaultEditor, defaults.settings.defaultEditor),
+      defaultTerminal: stringValue(settings.defaultTerminal, defaults.settings.defaultTerminal),
+      confirmCommands: booleanValue(settings.confirmCommands, defaults.settings.confirmCommands),
+      showHiddenProjects: booleanValue(settings.showHiddenProjects, defaults.settings.showHiddenProjects),
+      compactCards: booleanValue(settings.compactCards, defaults.settings.compactCards),
+    },
+  };
+}
+
 let dataPath = '';
 
 function getDataPath() {
@@ -67,12 +144,7 @@ function getDataPath() {
 export async function loadData(): Promise<AppData> {
   try {
     const content = await fs.readFile(getDataPath(), 'utf8');
-    const parsed = JSON.parse(content) as Partial<AppData>;
-    return {
-      projects: Array.isArray(parsed.projects) ? parsed.projects : [],
-      quickCommands: Array.isArray(parsed.quickCommands) ? parsed.quickCommands : [],
-      settings: { ...defaults.settings, ...(parsed.settings ?? {}) },
-    };
+    return normalizeAppData(JSON.parse(content) as unknown);
   } catch {
     await saveData(defaults);
     return structuredClone(defaults);
@@ -83,8 +155,13 @@ export async function saveData(data: AppData) {
   const target = getDataPath();
   await fs.mkdir(path.dirname(target), { recursive: true });
   const temporary = `${target}.next`;
-  await fs.writeFile(temporary, JSON.stringify(data, null, 2), 'utf8');
-  await fs.rename(temporary, target);
+  await fs.writeFile(temporary, JSON.stringify(normalizeAppData(data), null, 2), 'utf8');
+  try {
+    await fs.rename(temporary, target);
+  } catch (error) {
+    const code = error instanceof Error && 'code' in error ? error.code : undefined;
+    if (code !== 'EEXIST' && code !== 'EPERM' && code !== 'ENOTEMPTY') throw error;
+    await fs.rm(target, { force: true });
+    await fs.rename(temporary, target);
+  }
 }
-
-export { defaults };

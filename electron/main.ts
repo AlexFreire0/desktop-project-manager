@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GitAction, inspectGit, runGitAction } from './git.js';
-import { AppData, loadData, saveData } from './store.js';
+import { AppData, loadData, normalizeAppData, saveData } from './store.js';
 
 let window: BrowserWindow | null = null;
 let data: AppData;
@@ -17,14 +17,14 @@ function createWindow() {
   window = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 980,
+    minWidth: 720,
     minHeight: 650,
     backgroundColor: '#10131b',
     webPreferences: {
       preload: path.join(currentDir, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
   const devUrl = process.env.VITE_DEV_SERVER_URL;
@@ -92,8 +92,8 @@ async function resolveEditor(command: string) {
 
 function registerHandlers() {
   ipcMain.handle('data:get', () => data);
-  ipcMain.handle('data:save', async (_event, next: AppData) => {
-    data = next;
+  ipcMain.handle('data:save', async (_event, next: unknown) => {
+    data = normalizeAppData(next);
     await saveData(data);
     return data;
   });
@@ -121,7 +121,7 @@ function registerHandlers() {
   });
   ipcMain.handle('terminal:open', (_event, target: string, terminal: string) => {
     if (terminal) return launch(terminal, [], target);
-    if (process.platform === 'win32') return launch('cmd.exe', ['/K', 'cd', '/d', target]);
+    if (process.platform === 'win32') return launch('cmd.exe', ['/K'], target);
     if (process.platform === 'darwin') return launch('open', ['-a', 'Terminal', target]);
     return launch('x-terminal-emulator', [], target);
   });
