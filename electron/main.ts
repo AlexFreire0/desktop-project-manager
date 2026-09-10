@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
+import { execFile as execFileCallback } from 'node:child_process';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GitAction, inspectGit, runGitAction } from './git.js';
@@ -9,6 +11,7 @@ import { AppData, loadData, saveData } from './store.js';
 let window: BrowserWindow | null = null;
 let data: AppData;
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const execFile = promisify(execFileCallback);
 
 function createWindow() {
   window = new BrowserWindow({
@@ -59,6 +62,7 @@ async function resolveEditor(command: string) {
 
   const candidates = [
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code', 'Code.exe'),
+    path.join(process.env.USERPROFILE || '', 'AppData', 'Local', 'Programs', 'Microsoft VS Code', 'Code.exe'),
     path.join(process.env.ProgramFiles || '', 'Microsoft VS Code', 'Code.exe'),
     path.join(process.env['ProgramFiles(x86)'] || '', 'Microsoft VS Code', 'Code.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code Insiders', 'Code - Insiders.exe'),
@@ -72,6 +76,13 @@ async function resolveEditor(command: string) {
     } catch {
       // Keep looking; the command may still be available on PATH.
     }
+  }
+  try {
+    const result = await execFile('where.exe', ['code.exe'], { windowsHide: true });
+    const pathFromPath = result.stdout.split(/\r?\n/).map((item) => item.trim()).find(Boolean);
+    if (pathFromPath) return pathFromPath;
+  } catch {
+    // The command may not be registered on PATH.
   }
   return configured;
 }
@@ -95,6 +106,11 @@ function registerHandlers() {
       await launch(executable, [target], target);
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        if (process.platform === 'win32' && executable === 'code') {
+          const vscodeUrl = `vscode://file/${target.replace(/\\/g, '/')}`;
+          await shell.openExternal(vscodeUrl);
+          return;
+        }
         throw new Error(`No se encontró el editor "${editor || 'code'}". Instala VS Code o configura la ruta completa en Settings > Editor command.`);
       }
       throw error;
