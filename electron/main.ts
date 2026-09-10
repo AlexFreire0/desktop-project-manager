@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { spawn } from 'node:child_process';
+import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GitAction, inspectGit, runGitAction } from './git.js';
@@ -52,6 +53,29 @@ function launch(command: string, args: string[], cwd?: string): Promise<void> {
   });
 }
 
+async function resolveEditor(command: string) {
+  const configured = command.trim() || 'code';
+  if (configured !== 'code' || process.platform !== 'win32') return configured;
+
+  const candidates = [
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code', 'Code.exe'),
+    path.join(process.env.ProgramFiles || '', 'Microsoft VS Code', 'Code.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || '', 'Microsoft VS Code', 'Code.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code Insiders', 'Code - Insiders.exe'),
+    path.join(process.env.ProgramFiles || '', 'Microsoft VS Code Insiders', 'Code - Insiders.exe'),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Keep looking; the command may still be available on PATH.
+    }
+  }
+  return configured;
+}
+
 function registerHandlers() {
   ipcMain.handle('data:get', () => data);
   ipcMain.handle('data:save', async (_event, next: AppData) => {
@@ -65,7 +89,17 @@ function registerHandlers() {
   });
   ipcMain.handle('path:open', async (_event, target: string) => shell.openPath(target));
   ipcMain.handle('url:open', async (_event, url: string) => shell.openExternal(url));
-  ipcMain.handle('editor:open', (_event, target: string, editor: string) => launch(editor || 'code', [target], target));
+  ipcMain.handle('editor:open', async (_event, target: string, editor: string) => {
+    const executable = await resolveEditor(editor);
+    try {
+      await launch(executable, [target], target);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        throw new Error(`No se encontró el editor "${editor || 'code'}". Instala VS Code o configura la ruta completa en Settings > Editor command.`);
+      }
+      throw error;
+    }
+  });
   ipcMain.handle('terminal:open', (_event, target: string, terminal: string) => {
     if (terminal) return launch(terminal, [], target);
     if (process.platform === 'win32') return launch('cmd.exe', ['/K', 'cd', '/d', target]);

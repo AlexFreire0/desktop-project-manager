@@ -33,7 +33,7 @@ npm run package     # electron-builder installer (platform-specific)
 
 ## OS notes and safety
 
-- The editor setting is an executable command such as `code` or `cursor`; it must be installed and available on `PATH`.
+- The editor setting accepts an executable command such as `code` or `cursor`, or an absolute path. On Windows, the default `code` value also checks the standard VS Code installation folders when the `code` command is not available on `PATH`.
 - Terminal defaults use the OS default (`cmd.exe` on Windows, Terminal on macOS, and `x-terminal-emulator` on Linux) unless a command is configured.
 - Git inspection is safe and read-only. Fetch, Pull, and Push only run after the user clicks the corresponding button and Pull/Push ask for confirmation.
 - Quick commands use `child_process.spawn` with `shell: false`; executable names and arguments are passed separately to avoid shell interpolation. Project Desk does not run commands on startup or initialize/delete repositories.
