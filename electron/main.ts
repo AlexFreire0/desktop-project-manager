@@ -120,10 +120,16 @@ function registerHandlers() {
     }
   });
   ipcMain.handle('terminal:open', (_event, target: string, terminal: string) => {
-    if (terminal) return launch(terminal, [], target);
-    if (process.platform === 'win32') return launch('cmd.exe', ['/K'], target);
-    if (process.platform === 'darwin') return launch('open', ['-a', 'Terminal', target]);
-    return launch('x-terminal-emulator', [], target);
+    const cwd = target.trim();
+    if (!cwd) return Promise.reject(new Error('Project folder is empty'));
+    if (terminal) return launch(terminal, [], cwd);
+    if (process.platform === 'win32') {
+      // The inherited cwd is the reliable way to preserve spaces and special characters.
+      return launch('cmd.exe', ['/D', '/K'], cwd);
+    }
+    if (process.platform === 'darwin') return launch('open', ['-a', 'Terminal', cwd]);
+    return launch('x-terminal-emulator', ['--working-directory', cwd], cwd)
+      .catch(() => launch('gnome-terminal', ['--working-directory', cwd], cwd));
   });
   ipcMain.handle('git:inspect', (_event, target: string) => inspectGit(target));
   ipcMain.handle('git:action', async (_event, action: GitAction, target: string, value?: string) => {
