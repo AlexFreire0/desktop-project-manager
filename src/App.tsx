@@ -39,23 +39,6 @@ function App() {
     if (!loading) window.desktop.saveData(data).catch(() => showNotice('error', 'Could not save changes.'));
   }, [data, loading]);
 
-  useEffect(() => {
-    const pathsToInspect = gitPaths.filter((path) => !gitStatus[path]);
-    if (!pathsToInspect.length) return;
-    let cancelled = false;
-    Promise.all(pathsToInspect.map(async (path) => {
-      try {
-        return [path, await window.desktop.inspectGit(path)] as const;
-      } catch {
-        return [path, { isRepo: false, changes: 0, ahead: 0, behind: 0 }] as const;
-      }
-    })).then((results) => {
-      if (cancelled) return;
-      setGitStatus((current) => ({ ...current, ...Object.fromEntries(results) }));
-    });
-    return () => { cancelled = true; };
-  }, [gitPaths, gitStatus]);
-
   function showNotice(kind: Notice['kind'], text: string) {
     setNotice({ kind, text });
     window.setTimeout(() => setNotice(undefined), 3500);
@@ -79,6 +62,23 @@ function App() {
   }, [data.projects, data.settings.showHiddenProjects, filter, query, recent, sort]);
   const gitProjects = view === 'overview' ? recent : view === 'projects' && !selected ? visibleProjects : [];
   const gitPaths = useMemo(() => [...new Set(gitProjects.map((project) => project.path).filter(Boolean))], [gitProjects]);
+
+  useEffect(() => {
+    const pathsToInspect = gitPaths.filter((path) => !gitStatus[path]);
+    if (!pathsToInspect.length) return;
+    let cancelled = false;
+    Promise.all(pathsToInspect.map(async (path) => {
+      try {
+        return [path, await window.desktop.inspectGit(path)] as const;
+      } catch {
+        return [path, { isRepo: false, changes: 0, ahead: 0, behind: 0 }] as const;
+      }
+    })).then((results) => {
+      if (cancelled) return;
+      setGitStatus((current) => ({ ...current, ...Object.fromEntries(results) }));
+    });
+    return () => { cancelled = true; };
+  }, [gitPaths, gitStatus]);
 
   function saveProject(project: Project) {
     const exists = data.projects.some((item) => item.id === project.id);
