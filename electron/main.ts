@@ -124,8 +124,9 @@ function registerHandlers() {
     if (!cwd) return Promise.reject(new Error('Project folder is empty'));
     if (terminal) return launch(terminal, [], cwd);
     if (process.platform === 'win32') {
-      // The inherited cwd is the reliable way to preserve spaces and special characters.
-      return launch('cmd.exe', ['/D', '/K'], cwd);
+      // Prefer Windows Terminal, then keep a PowerShell window alive in the project folder.
+      return launch('wt.exe', ['-d', cwd], cwd)
+        .catch(() => launch('powershell.exe', ['-NoLogo', '-NoExit', '-Command', 'Set-Location -LiteralPath $args[0]', '--', cwd], cwd));
     }
     if (process.platform === 'darwin') return launch('open', ['-a', 'Terminal', cwd]);
     return launch('x-terminal-emulator', ['--working-directory', cwd], cwd)
