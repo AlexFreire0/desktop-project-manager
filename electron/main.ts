@@ -38,7 +38,10 @@ function splitCommand(command: string) {
 }
 
 function launch(command: string, args: string[], cwd?: string): Promise<void> {
-  const [executable, ...inlineArgs] = splitCommand(command);
+  const configuredCommand = command.trim();
+  const [executable, ...inlineArgs] = configuredCommand.includes('\\') || configuredCommand.includes('/')
+    ? [configuredCommand]
+    : splitCommand(configuredCommand);
   if (!executable) return Promise.reject(new Error('Command is empty'));
   return new Promise((resolve, reject) => {
     const child = spawn(executable, [...inlineArgs, ...args], {
